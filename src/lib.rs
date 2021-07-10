@@ -473,3 +473,36 @@ fn test_eval_string() {
         atom("d"),
     );
 }
+
+pub fn unparse<W: std::io::Write>(expr: &Element, out: &mut W) -> std::io::Result<()> {
+    match expr {
+        Element::Atom(atom) => write!(out, "{}", atom),
+        Element::List(list) => {
+            write!(out, "(")?;
+            let mut first = true;
+            for element in list {
+                if first {
+                    first = false;
+                } else {
+                    write!(out, " ")?;
+                }
+                unparse(element, out)?;
+            }
+            write!(out, ")")?;
+            Ok(())
+        }
+        Element::Function(_) => write!(out, "<function>"),
+    }
+}
+#[test]
+fn test_unparse() {
+    let mut out = Vec::new();
+    unparse(
+        &List(vec![List(vec![atom("lambda"), List(vec![atom("a"), atom("b")]), atom("b")]), List(vec![atom("quote"), atom("c")]), List(vec![atom("quote"), atom("d")])]),
+        &mut out,
+    ).unwrap();
+    assert_eq!(
+        out,
+        "((lambda (a b) b) (quote c) (quote d))".as_bytes(),
+    );
+}
