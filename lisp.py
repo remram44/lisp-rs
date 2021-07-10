@@ -138,5 +138,5 @@ assert eval(['cons', ['quote', 'a'], ['quote', []]]) == ['a']
 assert eval(['cons', ['quote', 'a'], ['quote', ['b', 'c']]]) == ['a', 'b', 'c']
 assert eval([['lambda', ['a', 'b'], 'b'], ['quote', 'd'], ['quote', 'e']]) == 'e'
 assert eval(['set', 'f', ['lambda', ['a', 'b'], 'b'], ['f', ['quote', 'd'], ['quote', 'e']]]) == 'e'
-assert eval(['cons', ['quote', 'quote'], ['cons', ['quote', 'a'], ['quote', []]]]) == ['quote', 'a']
-assert eval(['defmacro', 'm', ['x'], ['cons', ['quote', 'quote'], ['cons', ['quote', 'a'], ['quote', []]]], ['m', 'a']]) == 'a'
+assert eval(['cons', ['quote', 'quote'], ['quote', ['a']]]) == ['quote', 'a']
+assert eval(['defmacro', 'm', ['x'], ['cons', ['quote', 'quote'], ['quote', ['a']]], ['m', 'a']]) == 'a'
