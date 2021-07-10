@@ -20,7 +20,7 @@ type Environment = Rc<HashMap<String, EnvItem>>;
 #[derive(Clone)]
 enum Function {
     Builtin(fn(&Vec<Element>) -> Element),
-    Defined(DefinedFunction),
+    Defined(Rc<DefinedFunction>),
 }
 
 impl fmt::Debug for Function {
@@ -38,14 +38,26 @@ impl PartialEq for Function {
     }
 }
 
-#[derive(Clone)]
-struct DefinedFunction;
+struct DefinedFunction {
+    arg_names: Vec<String>,
+    body: Element,
+    env: Environment,
+}
 
 impl Function {
     fn apply(&self, args: &Vec<Element>) -> Element {
         match self {
             Function::Builtin(func) => func(args),
-            Function::Defined(d) => todo!(),
+            Function::Defined(func) => {
+                if args.len() != func.arg_names.len() {
+                    panic!("Wrong number of arguments to lambda function");
+                }
+                let mut new_env =  (*func.env).clone();
+                for (name, value) in func.arg_names.iter().zip(args.iter()) {
+                    new_env.insert(name.clone(), EnvItem::Value(value.clone()));
+                }
+                eval(&func.body, Rc::new(new_env))
+            },
         }
     }
 }
@@ -133,7 +145,21 @@ fn set(expr: &Vec<Element>, env: Environment) -> Element {
 }
 
 fn lambda(expr: &Vec<Element>, env: Environment) -> Element {
-    todo!()
+    if expr.len() != 3 {
+        panic!("Wrong number of arguments to lambda");
+    }
+    let arg_names = match &expr[1] {
+        Element::List(list) => list,
+        _ => panic!("Wrong syntax for lambda arguments list"),
+    };
+    let arg_names: Vec<String> = arg_names.iter()
+        .map(|a| match a {
+            Element::Atom(atom) => atom.clone(),
+            _ => panic!("Wrong syntax for lambda argument"),
+        })
+        .collect();
+    let body: Element = expr[2].clone();
+    Element::Function(Function::Defined(Rc::new(DefinedFunction { arg_names, body, env })))
 }
 
 fn defmacro(expr: &Vec<Element>, env: Environment) -> Element {
