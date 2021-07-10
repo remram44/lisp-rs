@@ -238,6 +238,40 @@ fn cons(args: &Vec<Element>) -> Result<Element, ProgramError> {
     }
 }
 
+fn car(args: &Vec<Element>) -> Result<Element, ProgramError> {
+    if args.len() != 1 {
+        return Err(ProgramError("Wrong number of arguments to car".to_owned()));
+    }
+    match &args[0] {
+        Element::List(list) => {
+            if list.len() == 0 {
+                Ok(Element::List(vec![]))
+            } else {
+                Ok(list[0].clone())
+            }
+        }
+        Element::Atom(atom) => Err(ProgramError(format!("Attempt to car atom {}", atom))),
+        Element::Function(_) => Err(ProgramError(format!("Attempt to car a function"))),
+    }
+}
+
+fn cdr(args: &Vec<Element>) -> Result<Element, ProgramError> {
+    if args.len() != 1 {
+        return Err(ProgramError("Wrong number of arguments to cdr".to_owned()));
+    }
+    match &args[0] {
+        Element::List(list) => {
+            if list.len() > 1 {
+                Ok(Element::List(list[1..].to_owned()))
+            } else {
+                Ok(Element::List(vec![]))
+            }
+        }
+        Element::Atom(atom) => Err(ProgramError(format!("Attempt to cdr atom {}", atom))),
+        Element::Function(_) => Err(ProgramError(format!("Attempt to cdr a function"))),
+    }
+}
+
 pub fn default_environment() -> Environment {
     let mut env = HashMap::new();
     env.insert("quote".to_owned(), EnvItem::Macro(Macro::Builtin(quote)));
@@ -245,6 +279,8 @@ pub fn default_environment() -> Environment {
     env.insert("lambda".to_owned(), EnvItem::Macro(Macro::Builtin(lambda)));
     env.insert("defmacro".to_owned(), EnvItem::Macro(Macro::Builtin(defmacro)));
     env.insert("cons".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(cons))));
+    env.insert("car".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(car))));
+    env.insert("cdr".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(cdr))));
     return Rc::new(env);
 }
 
@@ -286,6 +322,54 @@ fn test_cons() {
             default_environment(),
         ).unwrap(),
         List(vec![atom("a"), atom("b"), atom("c")]),
+    );
+}
+
+#[test]
+fn test_car_cdr() {
+    // (car (quote (a b c))) -> a
+    assert_eq!(
+        eval(
+            &List(vec![atom("car"), List(vec![atom("quote"), List(vec![atom("a"), atom("b"), atom("c")])])]),
+            default_environment(),
+        ).unwrap(),
+        atom("a"),
+    );
+
+    // (car (quote ())) -> ()
+    assert_eq!(
+        eval(
+            &List(vec![atom("car"), List(vec![atom("quote"), List(vec![])])]),
+            default_environment(),
+        ).unwrap(),
+        List(vec![]),
+    );
+
+    // (cdr (quote (a b c))) -> (b c)
+    assert_eq!(
+        eval(
+            &List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![atom("a"), atom("b"), atom("c")])])]),
+            default_environment(),
+        ).unwrap(),
+        List(vec![atom("b"), atom("c")]),
+    );
+
+    // (cdr (quote (a))) -> ()
+    assert_eq!(
+        eval(
+            &List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![atom("a")])])]),
+            default_environment(),
+        ).unwrap(),
+        List(vec![]),
+    );
+
+    // (cdr (quote ())) -> ()
+    assert_eq!(
+        eval(
+            &List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![])])]),
+            default_environment(),
+        ).unwrap(),
+        List(vec![]),
     );
 }
 
