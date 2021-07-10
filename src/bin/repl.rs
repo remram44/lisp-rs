@@ -1,4 +1,5 @@
-use lisp::eval_string;
+use std::io::Write;
+use lisp::{eval_string, unparse};
 
 fn main() {
     let stdin = std::io::stdin();
@@ -12,7 +13,11 @@ fn main() {
 
         line.truncate(line.trim_end().len());
         match eval_string(&line) {
-            Ok(result) => println!("{:?}", result),
+            Ok(result) => {
+                let mut stdout = std::io::stdout();
+                unparse(&result, &mut stdout).unwrap();
+                write!(stdout, "\n").unwrap();
+            },
             Err(error) => eprintln!("{}", error),
         }
 
