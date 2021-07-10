@@ -9,6 +9,7 @@ enum Element {
     List(Vec<Element>),
 }
 
+#[derive(Clone)]
 enum EnvItem {
     Macro(Macro),
     Value(Element),
@@ -49,6 +50,7 @@ impl Function {
     }
 }
 
+#[derive(Clone)]
 enum Macro {
     Builtin(fn(&Vec<Element>, Environment) -> Element),
     Defined(Rc<DefinedMacro>),
@@ -112,7 +114,22 @@ fn quote(expr: &Vec<Element>, _env: Environment) -> Element {
 }
 
 fn set(expr: &Vec<Element>, env: Environment) -> Element {
-    todo!()
+    if expr.len() < 4 || expr.len() % 2 != 0 {
+        panic!("Wrong number of arguments to set: {}", expr.len() - 1);
+    }
+    let mut new_env = (*env).clone();
+    let mut i = 1;
+    while i + 1 < expr.len() {
+        match &expr[i] {
+            Element::Atom(atom) => {
+                new_env.insert(atom.clone(), EnvItem::Value(eval(&expr[i + 1], env.clone())));
+            }
+            Element::List(_) => panic!("Cannot set a list"),
+            Element::Function(_) => panic!("Cannot set a function"),
+        }
+        i += 2;
+    }
+    eval(&expr[expr.len() - 1], Rc::new(new_env))
 }
 
 fn lambda(expr: &Vec<Element>, env: Environment) -> Element {
@@ -186,6 +203,18 @@ fn test_cons() {
             default_environment(),
         ),
         List(vec![atom("a"), atom("b"), atom("c")]),
+    );
+}
+
+#[test]
+fn test_set() {
+    // (set a (quote b) a) -> b
+    assert_eq!(
+        eval(
+            &List(vec![atom("set"), atom("a"), List(vec![atom("quote"), atom("b")]), atom("a")]),
+            default_environment(),
+        ),
+        atom("b"),
     );
 }
 
