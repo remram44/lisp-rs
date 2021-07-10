@@ -429,3 +429,47 @@ fn test_parse() {
         List(vec![List(vec![atom("lambda"), List(vec![atom("a"), atom("b")]), atom("b")]), List(vec![atom("quote"), atom("c")]), List(vec![atom("quote"), atom("d")])]),
     );
 }
+
+#[derive(Debug)]
+pub enum Error {
+    ParseError(ParseError),
+    ProgramError(ProgramError),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::ParseError(e) => write!(f, "Parse error: {}", e),
+            Error::ProgramError(e) => write!(f, "Program error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Error::ParseError(ref e) => e,
+            Error::ProgramError(ref e) => e,
+        })
+    }
+}
+
+pub fn eval_string(code: &str) -> Result<Element, Error> {
+    let expr = match parse(code) {
+        Ok(t) => t,
+        Err(e) => return Err(Error::ParseError(e)),
+    };
+    let result = match eval(&expr, default_environment()) {
+        Ok(t) => t,
+        Err(e) => return Err(Error::ProgramError(e)),
+    };
+    Ok(result)
+}
+
+#[test]
+fn test_eval_string() {
+    assert_eq!(
+        eval_string("((lambda (a b) b) (quote c) (quote d))").unwrap(),
+        atom("d"),
+    );
+}
