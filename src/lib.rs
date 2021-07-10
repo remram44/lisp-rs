@@ -3,14 +3,14 @@ use std::fmt;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
-enum Element {
+pub enum Element {
     Atom(String),
     Function(Function),
     List(Vec<Element>),
 }
 
 #[derive(Clone)]
-enum EnvItem {
+pub enum EnvItem {
     Macro(Macro),
     Value(Element),
 }
@@ -18,7 +18,7 @@ enum EnvItem {
 type Environment = Rc<HashMap<String, EnvItem>>;
 
 #[derive(Clone)]
-enum Function {
+pub enum Function {
     Builtin(fn(&Vec<Element>) -> Element),
     Defined(Rc<DefinedFunction>),
 }
@@ -38,7 +38,7 @@ impl PartialEq for Function {
     }
 }
 
-struct DefinedFunction {
+pub struct DefinedFunction {
     arg_names: Vec<String>,
     body: Element,
     env: Environment,
@@ -63,12 +63,12 @@ impl Function {
 }
 
 #[derive(Clone)]
-enum Macro {
+pub enum Macro {
     Builtin(fn(&Vec<Element>, Environment) -> Element),
     Defined(Rc<DefinedMacro>),
 }
 
-struct DefinedMacro {
+pub struct DefinedMacro {
     arg_names: Vec<String>,
     body: Element,
     env: Environment,
@@ -97,7 +97,7 @@ impl Macro {
     }
 }
 
-fn eval(expr: &Element, env: Environment) -> Element {
+pub fn eval(expr: &Element, env: Environment) -> Element {
     match expr {
         Element::Atom(atom) => {
             match env.get(atom) {
@@ -224,7 +224,7 @@ fn cons(args: &Vec<Element>) -> Element {
     }
 }
 
-fn default_environment() -> Environment {
+pub fn default_environment() -> Environment {
     let mut env = HashMap::new();
     env.insert("quote".to_owned(), EnvItem::Macro(Macro::Builtin(quote)));
     env.insert("set".to_owned(), EnvItem::Macro(Macro::Builtin(set)));
