@@ -195,6 +195,24 @@ fn lambda(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError
     ))))
 }
 
+fn if_(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
+    if expr.len() < 3 || expr.len() > 4 {
+        return Err(ProgramError("Wrong number of arguments to if".to_owned()));
+    }
+    match eval(&expr[1], env.clone())? {
+        // Empty list if false
+        Element::List(list) if list.len() == 0 => {
+            if expr.len() >= 4 {
+                eval(&expr[3], env)
+            } else {
+                Ok(Element::List(vec![]))
+            }
+        }
+        // Everything else is true
+        _ => eval(&expr[2], env)
+    }
+}
+
 fn defmacro(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
     if expr.len() != 5 {
         return Err(ProgramError("Wrong number of arguments to defmacro".to_owned()));
@@ -288,6 +306,7 @@ pub fn default_environment() -> Environment {
     env.insert("quote".to_owned(), EnvItem::Macro(Macro::Builtin(quote)));
     env.insert("set".to_owned(), EnvItem::Macro(Macro::Builtin(set)));
     env.insert("lambda".to_owned(), EnvItem::Macro(Macro::Builtin(lambda)));
+    env.insert("if".to_owned(), EnvItem::Macro(Macro::Builtin(if_)));
     env.insert("defmacro".to_owned(), EnvItem::Macro(Macro::Builtin(defmacro)));
     env.insert("cons".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(cons))));
     env.insert("car".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(car))));
@@ -439,6 +458,45 @@ fn test_set_lambda() {
             default_environment(),
         ).unwrap(),
         atom("e"),
+    );
+}
+
+#[test]
+fn test_if() {
+    // (if (cdr (quote (a b))) (quote c) (quote d)) -> c
+    assert_eq!(
+        eval(
+            &List(vec![atom("if"), List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![atom("a"), atom("b")])])]), List(vec![atom("quote"), atom("c")]), List(vec![atom("quote"), atom("d")])]),
+            default_environment(),
+        ).unwrap(),
+        atom("c"),
+    );
+
+    // (if (cdr (quote (a b))) (quote c)) -> c
+    assert_eq!(
+        eval(
+            &List(vec![atom("if"), List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![atom("a"), atom("b")])])]), List(vec![atom("quote"), atom("c")])]),
+            default_environment(),
+        ).unwrap(),
+        atom("c"),
+    );
+
+    // (if (cdr (quote (a))) (quote c) (quote d)) -> d
+    assert_eq!(
+        eval(
+            &List(vec![atom("if"), List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![atom("a")])])]), List(vec![atom("quote"), atom("c")]), List(vec![atom("quote"), atom("d")])]),
+            default_environment(),
+        ).unwrap(),
+        atom("d"),
+    );
+
+    // (if (cdr (quote (a))) (quote c)) -> ()
+    assert_eq!(
+        eval(
+            &List(vec![atom("if"), List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![atom("a")])])]), List(vec![atom("quote"), atom("c")])]),
+            default_environment(),
+        ).unwrap(),
+        List(vec![]),
     );
 }
 
