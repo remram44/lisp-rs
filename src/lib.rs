@@ -2,6 +2,17 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
+#[derive(Debug)]
+pub struct ProgramError(String);
+
+impl std::fmt::Display for ProgramError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ProgramError {}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Element {
     Atom(String),
@@ -19,7 +30,7 @@ type Environment = Rc<HashMap<String, EnvItem>>;
 
 #[derive(Clone)]
 pub enum Function {
-    Builtin(fn(&Vec<Element>) -> Element),
+    Builtin(fn(&Vec<Element>) -> Result<Element, ProgramError>),
     Defined(Rc<DefinedFunction>),
 }
 
@@ -45,12 +56,12 @@ pub struct DefinedFunction {
 }
 
 impl Function {
-    fn apply(&self, args: &Vec<Element>) -> Element {
+    fn apply(&self, args: &Vec<Element>) -> Result<Element, ProgramError> {
         match self {
             Function::Builtin(func) => func(args),
             Function::Defined(func) => {
                 if args.len() != func.arg_names.len() {
-                    panic!("Wrong number of arguments to lambda function");
+                    return Err(ProgramError("Wrong number of arguments to lambda function".to_owned()));
                 }
                 let mut new_env =  (*func.env).clone();
                 for (name, value) in func.arg_names.iter().zip(args.iter()) {
@@ -64,7 +75,7 @@ impl Function {
 
 #[derive(Clone)]
 pub enum Macro {
-    Builtin(fn(&Vec<Element>, Environment) -> Element),
+    Builtin(fn(&Vec<Element>, Environment) -> Result<Element, ProgramError>),
     Defined(Rc<DefinedMacro>),
 }
 
@@ -75,12 +86,12 @@ pub struct DefinedMacro {
 }
 
 impl Macro {
-    fn apply(&self, expr: &Vec<Element>, env: Environment) -> Element {
+    fn apply(&self, expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
         match self {
             Macro::Builtin(func) => func(expr, env),
             Macro::Defined(macro_) => {
                 if expr.len() != macro_.arg_names.len() + 1 {
-                    panic!("Wrong number of arguments to macro");
+                    return Err(ProgramError("Wrong number of arguments to macro".to_owned()));
                 }
 
                 // Call the macro body, in its definition's environment
@@ -88,7 +99,7 @@ impl Macro {
                 for (name, value) in macro_.arg_names.iter().zip(expr[1..].iter()) {
                     macro_env.insert(name.clone(), EnvItem::Value(value.clone()));
                 }
-                let code = eval(&macro_.body, Rc::new(macro_env));
+                let code = eval(&macro_.body, Rc::new(macro_env))?;
 
                 // Now evaluate the result, in the caller's environment
                 eval(&code, env)
@@ -97,13 +108,13 @@ impl Macro {
     }
 }
 
-pub fn eval(expr: &Element, env: Environment) -> Element {
+pub fn eval(expr: &Element, env: Environment) -> Result<Element, ProgramError> {
     match expr {
         Element::Atom(atom) => {
             match env.get(atom) {
-                None => panic!("Unbound atom {}", atom),
-                Some(EnvItem::Value(value)) => value.clone(),
-                Some(EnvItem::Macro(_)) => panic!("Can't use macro {} in this context", atom),
+                None => Err(ProgramError(format!("Unbound atom {}", atom))),
+                Some(EnvItem::Value(value)) => Ok(value.clone()),
+                Some(EnvItem::Macro(_)) => Err(ProgramError(format!("Can't use macro {} in this context", atom))),
             }
         }
         Element::List(ref expr) => {
@@ -115,91 +126,94 @@ pub fn eval(expr: &Element, env: Environment) -> Element {
             }
             call_func(expr, env)
         }
-        Element::Function(_) => panic!("Found function"),
+        Element::Function(_) => Err(ProgramError("Found function".to_owned())),
     }
 }
 
-fn call_func(expr: &Vec<Element>, env: Environment) -> Element {
+fn call_func(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
     let expr0 = match expr.get(0) {
         Some(e) => e,
-        None => panic!("Empty list for call"),
+        None => return Err(ProgramError("Empty list for call".to_owned())),
     };
-    match eval(expr0, env.clone()) {
-        Element::Atom(atom) => panic!("Attempt to call atom {}", atom),
-        Element::List(_) => panic!("Attempt to call list"),
+    match eval(expr0, env.clone())? {
+        Element::Atom(atom) => Err(ProgramError(format!("Attempt to call atom {}", atom))),
+        Element::List(_) => Err(ProgramError("Attempt to call list".to_owned())),
         Element::Function(func) => {
-            let args = expr[1..].iter()
-                .map(|arg| eval(arg, env.clone()))
-                .collect();
+            let mut args = Vec::new();
+            for arg in &expr[1..] {
+                args.push(eval(arg, env.clone())?);
+            }
             func.apply(&args)
         }
     }
 }
 
-fn quote(expr: &Vec<Element>, _env: Environment) -> Element {
+fn quote(expr: &Vec<Element>, _env: Environment) -> Result<Element, ProgramError> {
     if expr.len() != 2 {
-        panic!("Wrong number of arguments to quote");
+        return Err(ProgramError("Wrong number of arguments to quote".to_owned()));
     }
-    expr[1].clone()
+    Ok(expr[1].clone())
 }
 
-fn set(expr: &Vec<Element>, env: Environment) -> Element {
+fn set(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
     if expr.len() < 4 || expr.len() % 2 != 0 {
-        panic!("Wrong number of arguments to set: {}", expr.len() - 1);
+        return Err(ProgramError(format!("Wrong number of arguments to set: {}", expr.len() - 1)));
     }
     let mut new_env = (*env).clone();
     let mut i = 1;
     while i + 1 < expr.len() {
         match &expr[i] {
             Element::Atom(atom) => {
-                new_env.insert(atom.clone(), EnvItem::Value(eval(&expr[i + 1], env.clone())));
+                new_env.insert(atom.clone(), EnvItem::Value(eval(&expr[i + 1], env.clone())?));
             }
-            Element::List(_) => panic!("Cannot set a list"),
-            Element::Function(_) => panic!("Cannot set a function"),
+            Element::List(_) => return Err(ProgramError("Cannot set a list".to_owned())),
+            Element::Function(_) => return Err(ProgramError("Cannot set a function".to_owned())),
         }
         i += 2;
     }
     eval(&expr[expr.len() - 1], Rc::new(new_env))
 }
 
-fn lambda(expr: &Vec<Element>, env: Environment) -> Element {
+fn lambda(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
     if expr.len() != 3 {
-        panic!("Wrong number of arguments to lambda");
+        return Err(ProgramError("Wrong number of arguments to lambda".to_owned()));
     }
-    let arg_names = match &expr[1] {
+    let args_list = match &expr[1] {
         Element::List(list) => list,
-        _ => panic!("Wrong syntax for lambda arguments list"),
+        _ => return Err(ProgramError("Wrong syntax for lambda arguments list".to_owned())),
     };
-    let arg_names: Vec<String> = arg_names.iter()
-        .map(|a| match a {
+    let mut arg_names = Vec::new();
+    for a in args_list {
+        arg_names.push(match a {
             Element::Atom(atom) => atom.clone(),
-            _ => panic!("Wrong syntax for lambda argument"),
-        })
-        .collect();
+            _ => return Err(ProgramError("Wrong syntax for lambda argument".to_owned())),
+        });
+    }
     let body = expr[2].clone();
-    Element::Function(Function::Defined(Rc::new(
+    Ok(Element::Function(Function::Defined(Rc::new(
         DefinedFunction { arg_names, body, env },
-    )))
+    ))))
 }
 
-fn defmacro(expr: &Vec<Element>, env: Environment) -> Element {
+fn defmacro(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
     if expr.len() != 5 {
-        panic!("Wrong number of arguments to defmacro");
+        return Err(ProgramError("Wrong number of arguments to defmacro".to_owned()));
     }
     let name = match &expr[1] {
         Element::Atom(atom) => atom.clone(),
-        _ => panic!("Wrong syntax for defmacro name"),
+        _ => return Err(ProgramError("Wrong syntax for defmacro name".to_owned())),
     };
-    let arg_names = match &expr[2] {
+    let args_list = match &expr[2] {
         Element::List(list) => list,
-        _ => panic!("Wrong syntax for defmacro arguments list"),
+        _ => return Err(ProgramError("Wrong syntax for defmacro arguments list".to_owned())),
     };
-    let arg_names: Vec<String> = arg_names.iter()
-        .map(|a| match a {
+    let mut arg_names = Vec::new();
+    for a in args_list {
+        arg_names.push(match a {
             Element::Atom(atom) => atom.clone(),
-            _ => panic!("Wrong syntax for defmacro argument"),
-        })
-        .collect();
+            _ => return Err(ProgramError("Wrong syntax for lambda argument".to_owned())),
+        });
+    }
     let body = expr[3].clone();
     let mut new_env = (*env).clone();
     let macro_ = Macro::Defined(Rc::new(
@@ -209,18 +223,18 @@ fn defmacro(expr: &Vec<Element>, env: Environment) -> Element {
     eval(&expr[4], Rc::new(new_env))
 }
 
-fn cons(args: &Vec<Element>) -> Element {
+fn cons(args: &Vec<Element>) -> Result<Element, ProgramError> {
     if args.len() != 2 {
-        panic!("Wrong number of arguments to cons");
+        return Err(ProgramError("Wrong number of arguments to cons".to_owned()));
     }
     match args[1] {
         Element::List(ref list) => {
             let mut new_list = vec![args[0].clone()];
             new_list.extend_from_slice(list);
-            Element::List(new_list)
+            Ok(Element::List(new_list))
         }
-        Element::Atom(ref atom) => panic!("Attempt to cons with atom {}", atom),
-        Element::Function(_) => panic!("Attempt to cons with a function"),
+        Element::Atom(ref atom) => Err(ProgramError(format!("Attempt to cons with atom {}", atom))),
+        Element::Function(_) => Err(ProgramError("Attempt to cons with a function".to_owned())),
     }
 }
 
@@ -249,7 +263,7 @@ fn test_quote() {
         eval(
             &List(vec![atom("quote"), atom("a")]),
             default_environment(),
-        ),
+        ).unwrap(),
         atom("a"),
     );
 }
@@ -261,7 +275,7 @@ fn test_cons() {
         eval(
             &List(vec![atom("cons"), List(vec![atom("quote"), atom("a")]), List(vec![atom("quote"), List(vec![])])]),
             default_environment(),
-        ),
+        ).unwrap(),
         List(vec![atom("a")]),
     );
 
@@ -270,7 +284,7 @@ fn test_cons() {
         eval(
             &List(vec![atom("cons"), List(vec![atom("quote"), atom("a")]), List(vec![atom("quote"), List(vec![atom("b"), atom("c")])])]),
             default_environment(),
-        ),
+        ).unwrap(),
         List(vec![atom("a"), atom("b"), atom("c")]),
     );
 }
@@ -282,7 +296,7 @@ fn test_set() {
         eval(
             &List(vec![atom("set"), atom("a"), List(vec![atom("quote"), atom("b")]), atom("a")]),
             default_environment(),
-        ),
+        ).unwrap(),
         atom("b"),
     );
 }
@@ -294,7 +308,7 @@ fn test_lambda() {
         eval(
             &List(vec![List(vec![atom("lambda"), List(vec![atom("a"), atom("b")]), atom("b")]), List(vec![atom("quote"), atom("c")]), List(vec![atom("quote"), atom("d")])]),
             default_environment(),
-        ),
+        ).unwrap(),
         atom("d"),
     );
 }
@@ -318,7 +332,7 @@ fn test_defmacro() {
         eval(
             &List(vec![atom("cons"), List(vec![atom("quote"), atom("quote")]), List(vec![atom("quote"), List(vec![atom("a")])])]),
             default_environment(),
-        ),
+        ).unwrap(),
         List(vec![atom("quote"), atom("a")]),
     );
 
@@ -330,7 +344,7 @@ fn test_defmacro() {
                 List(vec![atom("m"), atom("a")]),
             ]),
             default_environment(),
-        ),
+        ).unwrap(),
         atom("a"),
     );
 }
