@@ -51,10 +51,9 @@ impl Function {
 
 enum Macro {
     Builtin(fn(&Vec<Element>, Environment) -> Element),
-    Defined(DefinedMacro),
+    Defined(Rc<DefinedMacro>),
 }
 
-#[derive(Clone)]
 struct DefinedMacro;
 
 impl Macro {
