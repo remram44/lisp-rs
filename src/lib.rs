@@ -68,13 +68,31 @@ enum Macro {
     Defined(Rc<DefinedMacro>),
 }
 
-struct DefinedMacro;
+struct DefinedMacro {
+    arg_names: Vec<String>,
+    body: Element,
+    env: Environment,
+}
 
 impl Macro {
     fn apply(&self, expr: &Vec<Element>, env: Environment) -> Element {
         match self {
             Macro::Builtin(func) => func(expr, env),
-            Macro::Defined(d) => todo!(),
+            Macro::Defined(macro_) => {
+                if expr.len() != macro_.arg_names.len() + 1 {
+                    panic!("Wrong number of arguments to macro");
+                }
+
+                // Call the macro body, in its definition's environment
+                let mut macro_env = (*macro_.env).clone();
+                for (name, value) in macro_.arg_names.iter().zip(expr[1..].iter()) {
+                    macro_env.insert(name.clone(), EnvItem::Value(value.clone()));
+                }
+                let code = eval(&macro_.body, Rc::new(macro_env));
+
+                // Now evaluate the result, in the caller's environment
+                eval(&code, env)
+            }
         }
     }
 }
@@ -158,12 +176,37 @@ fn lambda(expr: &Vec<Element>, env: Environment) -> Element {
             _ => panic!("Wrong syntax for lambda argument"),
         })
         .collect();
-    let body: Element = expr[2].clone();
-    Element::Function(Function::Defined(Rc::new(DefinedFunction { arg_names, body, env })))
+    let body = expr[2].clone();
+    Element::Function(Function::Defined(Rc::new(
+        DefinedFunction { arg_names, body, env },
+    )))
 }
 
 fn defmacro(expr: &Vec<Element>, env: Environment) -> Element {
-    todo!()
+    if expr.len() != 5 {
+        panic!("Wrong number of arguments to defmacro");
+    }
+    let name = match &expr[1] {
+        Element::Atom(atom) => atom.clone(),
+        _ => panic!("Wrong syntax for defmacro name"),
+    };
+    let arg_names = match &expr[2] {
+        Element::List(list) => list,
+        _ => panic!("Wrong syntax for defmacro arguments list"),
+    };
+    let arg_names: Vec<String> = arg_names.iter()
+        .map(|a| match a {
+            Element::Atom(atom) => atom.clone(),
+            _ => panic!("Wrong syntax for defmacro argument"),
+        })
+        .collect();
+    let body = expr[3].clone();
+    let mut new_env = (*env).clone();
+    let macro_ = Macro::Defined(Rc::new(
+        DefinedMacro { arg_names, body, env },
+    ));
+    new_env.insert(name, EnvItem::Macro(macro_));
+    eval(&expr[4], Rc::new(new_env))
 }
 
 fn cons(args: &Vec<Element>) -> Element {
