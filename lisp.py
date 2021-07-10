@@ -59,7 +59,7 @@ def _quote(expr, env):
 @register(DEFAULT_ENV, 'macro')
 def _set(expr, env):
     if len(expr) < 4 or len(expr) % 2 != 0:
-        raise ProgramError("Wrong number of arguments to set: %d" % len(expr))
+        raise ProgramError("Wrong number of arguments to set: %d" % len(expr - 1))
     new_env = dict(env)
     for i in range(1, len(expr) - 1, 2):
         new_env[expr[i]] = 'value', eval(expr[i + 1], env)
