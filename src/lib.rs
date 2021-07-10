@@ -272,6 +272,17 @@ fn cdr(args: &Vec<Element>) -> Result<Element, ProgramError> {
     }
 }
 
+fn eq(args: &Vec<Element>) -> Result<Element, ProgramError> {
+    if args.len() != 2 {
+        return Err(ProgramError("Wrong number of arguments to eq".to_owned()));
+    }
+    Ok(if args[0] == args[1] {
+        Element::Atom("t".to_owned())
+    } else {
+        Element::List(vec![])
+    })
+}
+
 pub fn default_environment() -> Environment {
     let mut env = HashMap::new();
     env.insert("quote".to_owned(), EnvItem::Macro(Macro::Builtin(quote)));
@@ -281,6 +292,7 @@ pub fn default_environment() -> Environment {
     env.insert("cons".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(cons))));
     env.insert("car".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(car))));
     env.insert("cdr".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(cdr))));
+    env.insert("eq".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(eq))));
     return Rc::new(env);
 }
 
@@ -367,6 +379,27 @@ fn test_car_cdr() {
     assert_eq!(
         eval(
             &List(vec![atom("cdr"), List(vec![atom("quote"), List(vec![])])]),
+            default_environment(),
+        ).unwrap(),
+        List(vec![]),
+    );
+}
+
+#[test]
+fn test_eq() {
+    // (eq (quote (a b)) (quote (a b))) -> t
+    assert_eq!(
+        eval(
+            &List(vec![atom("eq"), List(vec![atom("quote"), List(vec![atom("a"), atom("b")])]), List(vec![atom("quote"), List(vec![atom("a"), atom("b")])])]),
+            default_environment(),
+        ).unwrap(),
+        atom("t"),
+    );
+
+    // (eq (quote (a b)) (quote (a c))) -> ()
+    assert_eq!(
+        eval(
+            &List(vec![atom("eq"), List(vec![atom("quote"), List(vec![atom("a"), atom("b")])]), List(vec![atom("quote"), List(vec![atom("a"), atom("c")])])]),
             default_environment(),
         ).unwrap(),
         List(vec![]),
