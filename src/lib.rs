@@ -155,23 +155,27 @@ fn quote(expr: &Vec<Element>, _env: Environment) -> Result<Element, ProgramError
     Ok(expr[1].clone())
 }
 
-fn set(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
-    if expr.len() < 4 || expr.len() % 2 != 0 {
-        return Err(ProgramError(format!("Wrong number of arguments to set: {}", expr.len() - 1)));
+fn let_(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
+    if expr.len() != 3 {
+        return Err(ProgramError(format!("Wrong number of arguments to set")));
     }
     let mut new_env = (*env).clone();
-    let mut i = 1;
-    while i + 1 < expr.len() {
-        match &expr[i] {
-            Element::Atom(atom) => {
-                new_env.insert(atom.clone(), EnvItem::Value(eval(&expr[i + 1], env.clone())?));
-            }
-            Element::List(_) => return Err(ProgramError("Cannot set a list".to_owned())),
-            Element::Function(_) => return Err(ProgramError("Cannot set a function".to_owned())),
-        }
-        i += 2;
+    let vars = match &expr[1] {
+        Element::List(list) => list,
+        _ => return Err(ProgramError("Wrong syntax for let bindings".to_owned())),
+    };
+    for var in vars {
+        let (name, value) = match var {
+            Element::List(list) if list.len() == 2 => (&list[0], &list[1]),
+            _ => return Err(ProgramError("Wrong syntax for let binding".to_owned())),
+        };
+        let name = match name {
+            Element::Atom(atom) => atom,
+            _ => return Err(ProgramError("Wrong syntax for let bindings".to_owned())),
+        };
+        new_env.insert(name.clone(), EnvItem::Value(eval(&value, env.clone())?));
     }
-    eval(&expr[expr.len() - 1], Rc::new(new_env))
+    eval(&expr[2], Rc::new(new_env))
 }
 
 fn lambda(expr: &Vec<Element>, env: Environment) -> Result<Element, ProgramError> {
@@ -304,7 +308,7 @@ fn eq(args: &Vec<Element>) -> Result<Element, ProgramError> {
 pub fn default_environment() -> Environment {
     let mut env = HashMap::new();
     env.insert("quote".to_owned(), EnvItem::Macro(Macro::Builtin(quote)));
-    env.insert("set".to_owned(), EnvItem::Macro(Macro::Builtin(set)));
+    env.insert("let".to_owned(), EnvItem::Macro(Macro::Builtin(let_)));
     env.insert("lambda".to_owned(), EnvItem::Macro(Macro::Builtin(lambda)));
     env.insert("if".to_owned(), EnvItem::Macro(Macro::Builtin(if_)));
     env.insert("defmacro".to_owned(), EnvItem::Macro(Macro::Builtin(defmacro)));
@@ -426,11 +430,11 @@ fn test_eq() {
 }
 
 #[test]
-fn test_set() {
-    // (set a (quote b) a) -> b
+fn test_let() {
+    // (let ((a (quote b))) a) -> b
     assert_eq!(
         eval(
-            &List(vec![atom("set"), atom("a"), List(vec![atom("quote"), atom("b")]), atom("a")]),
+            &List(vec![atom("let"), List(vec![List(vec![atom("a"), List(vec![atom("quote"), atom("b")])])]), atom("a")]),
             default_environment(),
         ).unwrap(),
         atom("b"),
@@ -450,11 +454,11 @@ fn test_lambda() {
 }
 
 #[test]
-fn test_set_lambda() {
-    // (set f (lambda (a b) b) (f (quote d) (quote e))) -> e
+fn test_let_lambda() {
+    // (let ((f (lambda (a b) b))) (f (quote d) (quote e))) -> e
     assert_eq!(
         eval(
-            &List(vec![atom("set"), atom("f"), List(vec![atom("lambda"), List(vec![atom("a"), atom("b")]), atom("b")]), List(vec![atom("f"), List(vec![atom("quote"), atom("d")]), List(vec![atom("quote"), atom("e")])])]),
+            &List(vec![atom("let"), List(vec![List(vec![atom("f"), List(vec![atom("lambda"), List(vec![atom("a"), atom("b")]), atom("b")])])]), List(vec![atom("f"), List(vec![atom("quote"), atom("d")]), List(vec![atom("quote"), atom("e")])])]),
             default_environment(),
         ).unwrap(),
         atom("e"),
