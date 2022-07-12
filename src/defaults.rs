@@ -182,6 +182,8 @@ pub fn default_environment() -> Environment {
     env.insert("car".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(car))));
     env.insert("cdr".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(cdr))));
     env.insert("eq".to_owned(), EnvItem::Value(Element::Function(Function::Builtin(eq))));
+    // Items
+    env.insert("nil".to_owned(), EnvItem::Value(Element::List(Vec::new())));
 
     return Rc::new(env);
 }
